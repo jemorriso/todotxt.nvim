@@ -283,6 +283,376 @@ todotxt.move_done_tasks = function()
 	update_buffer_if_open(config.todotxt, remaining_todo_lines)
 end
 
+--- Use Telescope to filter and navigate tasks
+--- @return nil
+todotxt.telescope_tasks = function()
+	local has_telescope, telescope = pcall(require, "telescope")
+	if not has_telescope then
+		vim.notify("Telescope is not installed", vim.log.levels.ERROR)
+		return
+	end
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	-- Get tasks from todo.txt file
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
+	pickers
+		.new({}, {
+			prompt_title = "Todo Tasks",
+			finder = finders.new_table({
+				results = lines,
+				entry_maker = function(entry)
+					-- Extract useful information for display
+					local priority = entry:match("^%((%a)%)") or ""
+					local project = entry:match("%+(%w+)") or ""
+					local context = entry:match("@(%w+)") or ""
+					local due_date = entry:match("due:(%d%d%d%d%-%d%d%-%d%d)") or ""
+
+					-- Create display string
+					local display = entry
+					local ordinal = entry
+
+					return {
+						value = entry,
+						display = display,
+						ordinal = ordinal,
+						lnum = nil, -- Will be set when jumping to line
+						priority = priority,
+						project = project,
+						context = context,
+						due_date = due_date,
+					}
+				end,
+			}),
+			sorter = conf.generic_sorter({}),
+			attach_mappings = function(prompt_bufnr, map)
+				-- Jump to the task line when selected
+				actions.select_default:replace(function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+
+					-- Find the line number
+					for i, line in ipairs(lines) do
+						if line == selection.value then
+							vim.api.nvim_win_set_cursor(0, { i, 0 })
+							break
+						end
+					end
+				end)
+
+				-- Mark task as done
+				map("i", "<C-d>", function()
+					local selection = action_state.get_selected_entry()
+					local line = selection.value
+
+					-- Toggle completion status
+					if line:match("^x %d%d%d%d%-%d%d%-%d%d ") then
+						line = line:gsub("^x %d%d%d%d%-%d%d%-%d%d ", "")
+					else
+						local date = os.date("%Y-%m-%d")
+						line = "x " .. date .. " " .. line
+					end
+
+					-- Update the task
+					for i, l in ipairs(lines) do
+						if l == selection.value then
+							vim.api.nvim_buf_set_lines(0, i - 1, i, false, { line })
+							-- Update results in telescope
+							selection.value = line
+							selection.display = line
+							selection.ordinal = line
+							action_state.set_selected_entry(selection)
+							break
+						end
+					end
+
+					return true -- Keep telescope open
+				end)
+
+				return true
+			end,
+		})
+		:find()
+end
+
+--- Use Telescope to filter by project
+--- @return nil
+todotxt.telescope_projects = function()
+	local has_telescope, telescope = pcall(require, "telescope")
+	if not has_telescope then
+		vim.notify("Telescope is not installed", vim.log.levels.ERROR)
+		return
+	end
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	-- Get tasks from todo.txt file
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
+	-- Extract unique projects
+	local projects = {}
+	for _, line in ipairs(lines) do
+		for project in line:gmatch("%+(%w+)") do
+			projects[project] = true
+		end
+	end
+
+	local project_list = {}
+	for project, _ in pairs(projects) do
+		table.insert(project_list, project)
+	end
+	table.sort(project_list)
+
+	pickers
+		.new({}, {
+			prompt_title = "Todo Projects",
+			finder = finders.new_table({
+				results = project_list,
+				entry_maker = function(entry)
+					return {
+						value = entry,
+						display = "+" .. entry,
+						ordinal = entry,
+					}
+				end,
+			}),
+			sorter = conf.generic_sorter({}),
+			attach_mappings = function(prompt_bufnr, map)
+				actions.select_default:replace(function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+
+					-- Filter by the selected project
+					todotxt.telescope_filter_by_project(selection.value)
+				end)
+
+				return true
+			end,
+		})
+		:find()
+end
+
+--- Use Telescope to filter tasks by a specific project
+--- @param project string: The project to filter by
+--- @return nil
+todotxt.telescope_filter_by_project = function(project)
+	local has_telescope, telescope = pcall(require, "telescope")
+	if not has_telescope then
+		vim.notify("Telescope is not installed", vim.log.levels.ERROR)
+		return
+	end
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	-- Get tasks from todo.txt file
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
+	-- Filter tasks that have the specified project
+	local filtered_lines = {}
+	for i, line in ipairs(lines) do
+		if line:match("%+" .. project) then
+			table.insert(filtered_lines, { line = line, index = i })
+		end
+	end
+
+	pickers
+		.new({}, {
+			prompt_title = "Tasks for Project +" .. project,
+			finder = finders.new_table({
+				results = filtered_lines,
+				entry_maker = function(entry)
+					return {
+						value = entry.line,
+						display = entry.line,
+						ordinal = entry.line,
+						lnum = entry.index,
+					}
+				end,
+			}),
+			sorter = conf.generic_sorter({}),
+			attach_mappings = function(prompt_bufnr, map)
+				actions.select_default:replace(function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+
+					-- Jump to the line
+					if selection.lnum then
+						vim.api.nvim_win_set_cursor(0, { selection.lnum, 0 })
+					end
+				end)
+
+				return true
+			end,
+		})
+		:find()
+end
+
+--- Use Telescope to filter and navigate tasks with completion functionality
+--- @return nil
+todotxt.telescope_tasks = function()
+	local has_telescope, telescope = pcall(require, "telescope")
+	if not has_telescope then
+		vim.notify("Telescope is not installed", vim.log.levels.ERROR)
+		return
+	end
+
+	local pickers = require("telescope.pickers")
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	-- Get tasks from todo.txt file
+	local lines = {}
+	local is_todo_file = vim.api.nvim_buf_get_name(0) == config.todotxt
+
+	if is_todo_file then
+		lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+	else
+		lines = read_lines(config.todotxt)
+	end
+
+	pickers
+		.new({}, {
+			prompt_title = "Todo Tasks",
+			finder = finders.new_table({
+				results = lines,
+				entry_maker = function(entry)
+					-- Check if task is completed
+					local completed = entry:match("^x %d%d%d%d%-%d%d%-%d%d") ~= nil
+
+					-- Extract other useful information
+					local priority = entry:match("^%((%a)%)") or ""
+					local project = entry:match("%+(%w+)") or ""
+					local context = entry:match("@(%w+)") or ""
+
+					-- Create display with completion status indicator
+					local display = (completed and "[✓] " or "[ ] ") .. entry
+
+					return {
+						value = entry,
+						display = display,
+						ordinal = entry,
+						completed = completed,
+					}
+				end,
+			}),
+			sorter = conf.generic_sorter({}),
+			attach_mappings = function(prompt_bufnr, map)
+				-- Complete/uncomplete task with <C-space>
+				map("i", "<C-space>", function()
+					local selection = action_state.get_selected_entry()
+					local line = selection.value
+					local updated_line
+
+					-- Toggle completion status
+					if line:match("^x %d%d%d%d%-%d%d%-%d%d ") then
+						-- Task is completed - uncomplete it
+						updated_line = line:gsub("^x %d%d%d%d%-%d%d%-%d%d ", "")
+						selection.completed = false
+					else
+						-- Task is not completed - complete it
+						local date = os.date("%Y-%m-%d")
+						updated_line = "x " .. date .. " " .. line
+						selection.completed = true
+					end
+
+					-- Update the task in both Telescope and the buffer/file
+					selection.value = updated_line
+					selection.display = (selection.completed and "[✓] " or "[ ] ") .. updated_line
+					selection.ordinal = updated_line
+
+					-- Refresh the Telescope view
+					action_state.set_selected_entry(selection)
+
+					-- Find and update the task in the original lines list
+					for i, l in ipairs(lines) do
+						if l == line then
+							lines[i] = updated_line
+							break
+						end
+					end
+
+					-- Update buffer if we're in the todo file, otherwise update the file directly
+					if is_todo_file then
+						vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+					else
+						write_lines(config.todotxt, lines)
+					end
+
+					return true -- Keep Telescope open
+				end)
+
+				-- Jump to the task when selected
+				actions.select_default:replace(function()
+					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
+
+					-- If we're not already in the todo file, open it
+					if not is_todo_file then
+						vim.cmd("split " .. config.todotxt)
+					end
+
+					-- Find and jump to the selected line
+					local current_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+					for i, line in ipairs(current_lines) do
+						if line == selection.value then
+							vim.api.nvim_win_set_cursor(0, { i, 0 })
+							break
+						end
+					end
+				end)
+
+				-- Add <C-a> to archive completed tasks
+				map("i", "<C-a>", function()
+					-- Move completed tasks to done.txt
+					local todo_lines = read_lines(config.todotxt)
+					local done_lines = read_lines(config.donetxt)
+					local remaining_todo_lines = {}
+
+					for _, line in ipairs(todo_lines) do
+						if line:match("^x ") then
+							table.insert(done_lines, line)
+						else
+							table.insert(remaining_todo_lines, line)
+						end
+					end
+
+					write_lines(config.todotxt, remaining_todo_lines)
+					write_lines(config.donetxt, done_lines)
+
+					-- Update buffer if needed and refresh Telescope with remaining tasks
+					if is_todo_file then
+						vim.api.nvim_buf_set_lines(0, 0, -1, false, remaining_todo_lines)
+					end
+
+					-- Close and reopen Telescope to show updated task list
+					actions.close(prompt_bufnr)
+					todotxt.telescope_tasks()
+
+					vim.notify("Completed tasks archived to done.txt", vim.log.levels.INFO)
+					return true
+				end)
+
+				return true
+			end,
+		})
+		:find()
+end
+
 --- Setup function
 --- @param opts Setup
 todotxt.setup = function(opts)

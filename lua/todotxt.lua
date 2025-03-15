@@ -65,33 +65,33 @@ local stable_sort = function(items)
 	return result
 end
 
---- Sorts the tasks in the open buffer by a given function (with stable sorting)
---- @param compare_fn function: A function that compares two items
+--- Sorts the tasks in the open buffer by a given function.
+--- @param sort_func function: Function that returns true if a should come before b
 --- @return nil
-local sort_tasks_by = function(compare_fn)
+local sort_tasks_by = function(sort_func)
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-
 	-- Create a table with the original indices
-	local indexed = {}
+	local indexed_lines = {}
 	for i, line in ipairs(lines) do
-		indexed[i] = { value = line, index = i }
+		indexed_lines[i] = { line = line, original_index = i }
 	end
-
-	-- Sort the table using the comparison function and fallback to index for equal items
-	table.sort(indexed, function(a, b)
-		local result = compare_fn(a.value, b.value)
-		if result == nil then
-			return a.index < b.index
+	-- Perform stable sort by using original indices as tiebreaker
+	table.sort(indexed_lines, function(a, b)
+		local result = sort_func(a.line, b.line)
+		if result == true then
+			return true
+		elseif result == false then
+			return false
+		else
+			-- If sort_func doesn't differentiate (returns nil), use original indices
+			return a.original_index < b.original_index
 		end
-		return result or (not compare_fn(b.value, a.value) and a.index < b.index)
 	end)
-
-	-- Extract the sorted values
+	-- Extract just the lines again
 	local sorted_lines = {}
-	for i, item in ipairs(indexed) do
-		sorted_lines[i] = item.value
+	for i, item in ipairs(indexed_lines) do
+		sorted_lines[i] = item.line
 	end
-
 	vim.api.nvim_buf_set_lines(0, 0, -1, false, sorted_lines)
 end
 
@@ -141,7 +141,14 @@ todotxt.sort_tasks_by_priority = function()
 	sort_tasks_by(function(a, b)
 		local priority_a = a:match("^%((%a)%)") or "Z"
 		local priority_b = b:match("^%((%a)%)") or "Z"
-		return priority_a < priority_b
+
+		if priority_a < priority_b then
+			return true
+		elseif priority_a > priority_b then
+			return false
+		else
+			return nil -- Indicates a tie, use original order
+		end
 	end)
 end
 

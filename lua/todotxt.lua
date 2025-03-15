@@ -41,32 +41,37 @@ local update_buffer_if_open = function(filepath, lines)
 end
 
 --- Sorts the tasks in the open buffer by a given function.
---- @param sort_func function: Function that returns true if a should come before b
+--- @param sort_func function
 --- @return nil
 local sort_tasks_by = function(sort_func)
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
 	-- Create a table with the original indices
 	local indexed_lines = {}
 	for i, line in ipairs(lines) do
 		indexed_lines[i] = { line = line, original_index = i }
 	end
+
 	-- Perform stable sort by using original indices as tiebreaker
 	table.sort(indexed_lines, function(a, b)
 		local result = sort_func(a.line, b.line)
-		if result == true then
+		if result then
 			return true
-		elseif result == false then
+		elseif sort_func(b.line, a.line) then
 			return false
 		else
-			-- If sort_func doesn't differentiate (returns nil), use original indices
+			-- If neither a comes before b nor b comes before a, they're equal
+			-- Use original indices to maintain stable order
 			return a.original_index < b.original_index
 		end
 	end)
+
 	-- Extract just the lines again
 	local sorted_lines = {}
 	for i, item in ipairs(indexed_lines) do
 		sorted_lines[i] = item.line
 	end
+
 	vim.api.nvim_buf_set_lines(0, 0, -1, false, sorted_lines)
 end
 
@@ -107,14 +112,7 @@ todotxt.sort_tasks_by_priority = function()
 	sort_tasks_by(function(a, b)
 		local priority_a = a:match("^%((%a)%)") or "Z"
 		local priority_b = b:match("^%((%a)%)") or "Z"
-
-		if priority_a < priority_b then
-			return true
-		elseif priority_a > priority_b then
-			return false
-		else
-			return nil -- Indicates a tie, use original order
-		end
+		return priority_a < priority_b
 	end)
 end
 
@@ -126,25 +124,13 @@ todotxt.sort_tasks = function()
 		local date_b = b:match("^x (%d%d%d%d%-%d%d%-%d%d)") or b:match("^(%d%d%d%d%-%d%d%-%d%d)")
 
 		if date_a and date_b then
-			if date_a > date_b then
-				return true
-			elseif date_a < date_b then
-				return false
-			else
-				return nil -- Equal dates, maintain original order
-			end
+			return date_a > date_b
 		elseif date_a then
 			return false
 		elseif date_b then
 			return true
 		else
-			if a > b then
-				return true
-			elseif a < b then
-				return false
-			else
-				return nil -- Equal lines, maintain original order
-			end
+			return a > b
 		end
 	end)
 end
@@ -155,14 +141,7 @@ todotxt.sort_tasks_by_project = function()
 	sort_tasks_by(function(a, b)
 		local project_a = a:match("%+%w+") or ""
 		local project_b = b:match("%+%w+") or ""
-
-		if project_a < project_b then
-			return true
-		elseif project_a > project_b then
-			return false
-		else
-			return nil -- Equal projects, maintain original order
-		end
+		return project_a < project_b
 	end)
 end
 
@@ -172,14 +151,7 @@ todotxt.sort_tasks_by_context = function()
 	sort_tasks_by(function(a, b)
 		local context_a = a:match("@%w+") or ""
 		local context_b = b:match("@%w+") or ""
-
-		if context_a < context_b then
-			return true
-		elseif context_a > context_b then
-			return false
-		else
-			return nil -- Equal contexts, maintain original order
-		end
+		return context_a < context_b
 	end)
 end
 
@@ -191,25 +163,13 @@ todotxt.sort_tasks_by_due_date = function()
 		local due_date_b = b:match("due:(%d%d%d%d%-%d%d%-%d%d)")
 
 		if due_date_a and due_date_b then
-			if due_date_a < due_date_b then
-				return true
-			elseif due_date_a > due_date_b then
-				return false
-			else
-				return nil -- Equal due dates, maintain original order
-			end
+			return due_date_a < due_date_b
 		elseif due_date_a then
 			return true
 		elseif due_date_b then
 			return false
 		else
-			if a < b then
-				return true
-			elseif a > b then
-				return false
-			else
-				return nil -- Equal lines, maintain original order
-			end
+			return a < b
 		end
 	end)
 end

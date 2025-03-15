@@ -174,6 +174,40 @@ todotxt.sort_tasks_by_due_date = function()
 	end)
 end
 
+--- Sorts tasks with the same project as the current line to the top.
+--- @return nil
+todotxt.sort_by_current_project = function()
+	local current_buf = vim.api.nvim_get_current_buf()
+	local current_line = vim.api.nvim_get_current_line()
+
+	-- Extract project from current line
+	local current_project = current_line:match("%+(%w+)")
+
+	-- If no project is found, notify the user and return
+	if not current_project then
+		vim.notify("No project found in the current line", vim.log.levels.INFO)
+		return
+	end
+
+	-- Sort tasks by matching the project of the current line
+	sort_tasks_by(function(a, b)
+		local a_has_project = a:match("%+" .. current_project .. "%W") or a:match("%+" .. current_project .. "$")
+		local b_has_project = b:match("%+" .. current_project .. "%W") or b:match("%+" .. current_project .. "$")
+
+		-- Project match takes precedence
+		if a_has_project and not b_has_project then
+			return true -- a goes first
+		elseif not a_has_project and b_has_project then
+			return false -- b goes first
+		else
+			-- Both match or both don't match - maintain original order within these groups
+			return nil
+		end
+	end)
+
+	vim.notify("Sorted by project: +" .. current_project, vim.log.levels.INFO)
+end
+
 --- Cycles the priority of the current task between A, B, C, and no priority.
 --- @return nil
 todotxt.cycle_priority = function()

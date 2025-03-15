@@ -40,10 +40,65 @@ local update_buffer_if_open = function(filepath, lines)
 	end
 end
 
+--- Helper function for stable sorting
+--- @param items table: The items to sort
+--- @param compare_fn function: A function that compares two items
+--- @return table: The sorted items
+local stable_sort = function(items)
+	-- Create a table with the original indices
+	local indexed = {}
+	for i, item in ipairs(items) do
+		indexed[i] = { value = item, index = i }
+	end
+
+	-- Sort the table
+	table.sort(indexed, function(a, b)
+		return a.value < b.value or (a.value == b.value and a.index < b.index)
+	end)
+
+	-- Extract the sorted values
+	local result = {}
+	for i, item in ipairs(indexed) do
+		result[i] = item.value
+	end
+
+	return result
+end
+
+--- Sorts the tasks in the open buffer by a given function (with stable sorting)
+--- @param compare_fn function: A function that compares two items
+--- @return nil
+local sort_tasks_by = function(compare_fn)
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
+	-- Create a table with the original indices
+	local indexed = {}
+	for i, line in ipairs(lines) do
+		indexed[i] = { value = line, index = i }
+	end
+
+	-- Sort the table using the comparison function and fallback to index for equal items
+	table.sort(indexed, function(a, b)
+		local result = compare_fn(a.value, b.value)
+		if result == nil then
+			return a.index < b.index
+		end
+		return result or (not compare_fn(b.value, a.value) and a.index < b.index)
+	end)
+
+	-- Extract the sorted values
+	local sorted_lines = {}
+	for i, item in ipairs(indexed) do
+		sorted_lines[i] = item.value
+	end
+
+	vim.api.nvim_buf_set_lines(0, 0, -1, false, sorted_lines)
+end
+
 --- Sorts the tasks in the open buffer by a given function.
 --- @param sort_func function
 --- @return nil
-local sort_tasks_by = function(sort_func)
+local sort_tasks_by_old = function(sort_func)
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 	table.sort(lines, sort_func)
 	vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)

@@ -214,7 +214,7 @@ todotxt.sort_by_current_context = function()
 	local current_line = vim.api.nvim_get_current_line()
 
 	-- Extract context from current line
-	local current_context = current_line:match("@%w+")
+	local current_context = current_line:match("@(%w+)")
 
 	-- If no context is found, notify the user and return
 	if not current_context then
@@ -224,8 +224,8 @@ todotxt.sort_by_current_context = function()
 
 	-- Sort tasks by matching the project of the current line
 	sort_tasks_by(function(a, b)
-		local a_has_context = a:match(current_context .. "%W") or a:match(current_context .. "$")
-		local b_has_context = b:match(current_context .. "%W") or b:match(current_context .. "$")
+		local a_has_context = a:match("@" .. current_context .. "%W") or a:match("@" .. current_context .. "$")
+		local b_has_context = b:match("@" .. current_context .. "%W") or b:match("@" .. current_context .. "$")
 
 		-- context match takes precedence
 		if a_has_context and not b_has_context then

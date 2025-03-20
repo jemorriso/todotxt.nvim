@@ -19,24 +19,35 @@ local read_lines = function(filepath)
 	return vim.fn.readfile(filepath)
 end
 
---- Writes the lines to a file.
+--- Writes the lines to a file and updates any corresponding buffer.
 --- @param filepath string
 --- @param lines table
 --- @return nil
 local write_lines = function(filepath, lines)
-	vim.fn.writefile(lines, filepath)
-end
+	-- First, check if this file is open in any buffer
+	local buf_exists = false
+	local buf_num = -1
 
---- Updates the buffer if it is open.
---- @param filepath string
---- @param lines string[]
---- @return nil
-local update_buffer_if_open = function(filepath, lines)
-	local current_buf = vim.api.nvim_get_current_buf()
-	local bufname = vim.api.nvim_buf_get_name(current_buf)
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		local bufname = vim.api.nvim_buf_get_name(buf)
+		if bufname == filepath and vim.api.nvim_buf_is_loaded(buf) then
+			buf_exists = true
+			buf_num = buf
+			break
+		end
+	end
 
-	if bufname == filepath then
-		vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+	if buf_exists then
+		-- Update the buffer directly instead of writing to disk
+		vim.api.nvim_buf_set_lines(buf_num, 0, -1, false, lines)
+
+		-- Mark the buffer as "saved" to avoid the reload prompt
+		vim.api.nvim_buf_call(buf_num, function()
+			vim.cmd("set nomodified")
+		end)
+	else
+		-- File isn't open in any buffer, safe to write directly
+		vim.fn.writefile(lines, filepath)
 	end
 end
 
@@ -312,8 +323,6 @@ todotxt.move_done_tasks = function()
 
 	write_lines(config.todotxt, remaining_todo_lines)
 	write_lines(config.donetxt, done_lines)
-
-	update_buffer_if_open(config.todotxt, remaining_todo_lines)
 end
 
 --- Setup function

@@ -192,7 +192,7 @@ todotxt.sort_by_current_project = function()
 	local current_line = vim.api.nvim_get_current_line()
 
 	-- Extract project from current line
-	local current_project = current_line:match("%+(%w+)")
+	local current_project = current_line:match("%+([%w%.]+)")
 
 	-- If no project is found, notify the user and return
 	if not current_project then
@@ -202,8 +202,8 @@ todotxt.sort_by_current_project = function()
 
 	-- Sort tasks by matching the project of the current line
 	sort_tasks_by(function(a, b)
-		local a_has_project = a:match("%+" .. current_project .. "%W") or a:match("%+" .. current_project .. "$")
-		local b_has_project = b:match("%+" .. current_project .. "%W") or b:match("%+" .. current_project .. "$")
+		local a_has_project = a:match("%+" .. current_project .. "[^%w%.]") or a:match("%+" .. current_project .. "$")
+		local b_has_project = b:match("%+" .. current_project .. "[^%w%.]") or b:match("%+" .. current_project .. "$")
 
 		-- Project match takes precedence
 		if a_has_project and not b_has_project then

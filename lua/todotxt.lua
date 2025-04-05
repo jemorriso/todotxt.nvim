@@ -185,6 +185,33 @@ todotxt.sort_tasks_by_due_date = function()
 	end)
 end
 
+--- Sorts the tasks in the open buffer by time.
+--- Looks for time in format HH:MM (24-hour format).
+--- @return nil
+todotxt.sort_tasks_by_time = function()
+	sort_tasks_by(function(a, b)
+		-- Extract time in format HH:MM (assuming consistent 24-hour format)
+		local time_pattern = "(%d%d:%d%d)"
+		local time_a = a:match(time_pattern)
+		local time_b = b:match(time_pattern)
+
+		-- If both have times, compare them directly
+		-- This works because "HH:MM" format sorts lexicographically
+		if time_a and time_b then
+			return time_a < time_b
+		elseif time_a then
+			-- Only a has time, so it comes first
+			return true
+		elseif time_b then
+			-- Only b has time, so b comes first
+			return false
+		else
+			-- Neither has time, maintain default order
+			return nil
+		end
+	end)
+end
+
 --- Sorts tasks with the same project as the current line to the top.
 --- @return nil
 todotxt.sort_by_current_project = function()

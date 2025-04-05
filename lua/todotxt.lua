@@ -212,6 +212,52 @@ todotxt.sort_tasks_by_time = function()
 	end)
 end
 
+--- Sorts the tasks in the open buffer by creation date and time.
+--- Uses the date at the start of each line, and time if present.
+--- @return nil
+todotxt.sort_tasks_by_creation_datetime = function()
+	sort_tasks_by(function(a, b)
+		-- Extract creation date from the beginning of the line
+		-- This only matches dates at the start of the line
+		local creation_date_a = a:match("^(%d%d%d%d%-%d%d%-%d%d)")
+		local creation_date_b = b:match("^(%d%d%d%d%-%d%d%-%d%d)")
+
+		-- Extract time if present
+		local time_pattern = "(%d%d:%d%d)"
+		local time_a = a:match(time_pattern)
+		local time_b = b:match(time_pattern)
+
+		-- If both have creation dates, compare them
+		if creation_date_a and creation_date_b then
+			if creation_date_a ~= creation_date_b then
+				-- Different dates - sort by date only
+				return creation_date_a < creation_date_b
+			elseif time_a and time_b then
+				-- Same date, both have times - sort by time
+				return time_a < time_b
+			elseif time_a then
+				-- Only a has time - a comes first
+				return true
+			elseif time_b then
+				-- Only b has time - b comes first
+				return false
+			else
+				-- Same date, neither has time - maintain original order
+				return nil
+			end
+		elseif creation_date_a then
+			-- Only a has creation date - a comes first
+			return true
+		elseif creation_date_b then
+			-- Only b has creation date - b comes first
+			return false
+		else
+			-- Neither has creation date - maintain original order
+			return nil
+		end
+	end)
+end
+
 --- Sorts tasks with the same project as the current line to the top.
 --- @return nil
 todotxt.sort_by_current_project = function()
@@ -219,7 +265,8 @@ todotxt.sort_by_current_project = function()
 	local current_line = vim.api.nvim_get_current_line()
 
 	-- Extract project from current line
-	local current_project = current_line:match("%+(%w+)")
+	local current_project = current_line:match("%+([%w%.%-]+)")
+	local escaped_project = current_project:gsub("([%.%-%+%[%]%(%)%^%$%*%?%%])", "%%%1")
 
 	-- If no project is found, notify the user and return
 	if not current_project then
@@ -229,8 +276,8 @@ todotxt.sort_by_current_project = function()
 
 	-- Sort tasks by matching the project of the current line
 	sort_tasks_by(function(a, b)
-		local a_has_project = a:match("%+" .. current_project .. "%W") or a:match("%+" .. current_project .. "$")
-		local b_has_project = b:match("%+" .. current_project .. "%W") or b:match("%+" .. current_project .. "$")
+		local a_has_project = a:match("%+" .. escaped_project .. "%W") or a:match("%+" .. escaped_project .. "$")
+		local b_has_project = b:match("%+" .. escaped_project .. "%W") or b:match("%+" .. escaped_project .. "$")
 
 		-- Project match takes precedence
 		if a_has_project and not b_has_project then
@@ -256,7 +303,7 @@ todotxt.sort_by_current_context = function()
 
 	-- If no context is found, notify the user and return
 	if not current_context then
-		vim.notify("No project found in the current line", vim.log.levels.INFO)
+		vim.notify("No context found in the current line", vim.log.levels.INFO)
 		return
 	end
 

@@ -213,14 +213,13 @@ todotxt.sort_tasks_by_time = function()
 end
 
 --- Sorts the tasks in the open buffer by creation date and time.
---- Uses the date at the start of each line, and time if present.
+--- Handles priority markers and sorts by date, then time.
 --- @return nil
 todotxt.sort_tasks_by_creation_datetime = function()
 	sort_tasks_by(function(a, b)
-		-- Extract creation date from the beginning of the line
-		-- This only matches dates at the start of the line
-		local creation_date_a = a:match("^(%d%d%d%d%-%d%d%-%d%d)")
-		local creation_date_b = b:match("^(%d%d%d%d%-%d%d%-%d%d)")
+		-- Extract creation date, handling priority markers (A) at the beginning
+		local creation_date_a = a:match("^%(%a%) (%d%d%d%d%-%d%d%-%d%d)") or a:match("^(%d%d%d%d%-%d%d%-%d%d)")
+		local creation_date_b = b:match("^%(%a%) (%d%d%d%d%-%d%d%-%d%d)") or b:match("^(%d%d%d%d%-%d%d%-%d%d)")
 
 		-- Extract time if present
 		local time_pattern = "(%d%d:%d%d)"
@@ -254,6 +253,70 @@ todotxt.sort_tasks_by_creation_datetime = function()
 		else
 			-- Neither has creation date - maintain original order
 			return nil
+		end
+	end)
+end
+
+--- Sorts tasks for today to the top, then sorts by time.
+--- @return nil
+todotxt.sort_tasks_today_first = function()
+	-- Get today's date in YYYY-MM-DD format
+	local today = os.date("%Y-%m-%d")
+
+	sort_tasks_by(function(a, b)
+		-- Extract creation date, handling priority markers
+		local creation_date_a = a:match("^%(%a%) (%d%d%d%d%-%d%d%-%d%d)") or a:match("^(%d%d%d%d%-%d%d%-%d%d)")
+		local creation_date_b = b:match("^%(%a%) (%d%d%d%d%-%d%d%-%d%d)") or b:match("^(%d%d%d%d%-%d%d%-%d%d)")
+
+		-- Extract time if present
+		local time_pattern = "(%d%d:%d%d)"
+		local time_a = a:match(time_pattern)
+		local time_b = b:match(time_pattern)
+
+		-- Check if either task is for today
+		local a_is_today = creation_date_a and creation_date_a == today
+		local b_is_today = creation_date_b and creation_date_b == today
+
+		if a_is_today and not b_is_today then
+			-- A is today, B isn't - A comes first
+			return true
+		elseif not a_is_today and b_is_today then
+			-- B is today, A isn't - B comes first
+			return false
+		elseif a_is_today and b_is_today then
+			-- Both are today, sort by time
+			if time_a and time_b then
+				return time_a < time_b
+			elseif time_a then
+				return true
+			elseif time_b then
+				return false
+			else
+				return nil -- Both today, neither has time
+			end
+		else
+			-- Neither is today
+			if creation_date_a and creation_date_b then
+				if creation_date_a ~= creation_date_b then
+					-- Different dates - newer dates first
+					return creation_date_a > creation_date_b
+				elseif time_a and time_b then
+					-- Same date, sort by time
+					return time_a < time_b
+				elseif time_a then
+					return true
+				elseif time_b then
+					return false
+				else
+					return nil
+				end
+			elseif creation_date_a then
+				return true
+			elseif creation_date_b then
+				return false
+			else
+				return nil
+			end
 		end
 	end)
 end
